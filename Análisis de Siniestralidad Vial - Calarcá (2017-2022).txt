@@ -1,0 +1,38 @@
+Análisis de Siniestralidad Vial - Calarcá (2017-2022) Proyecto de procesamiento de datos 
+masivos (Batch) utilizando Apache Spark (PySpark). El script realiza la limpieza, transformación
+ y análisis exploratorio (EDA) sobre el conjunto de datos abierto wacd-xkg8. 
+Para ejecutarlo en un entorno Linux/Ubuntu: spark-submit spark_batch_accidentes.py
+
+
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, trim, upper, count, desc
+
+spark = SparkSession.builder.appName("Analisis_Batch_Accidentes_Calarca").getOrCreate()
+spark.sparkContext.setLogLevel("WARN")
+
+# 1. Carga de datos
+df_raw = spark.read.csv("file:///home/vboxuser/tarea3_spark/accidentes_calarca.csv", header=True, inferSchema=True)
+
+# 2. Limpieza y Transformación
+columnas = df_raw.columns
+for c in columnas:
+    if "A" in c.upper() and "O" in c.upper() and len(c) <= 4 and c.upper() != "ORDEN":
+        df_raw = df_raw.withColumnRenamed(c, "ANIO")
+
+df_clean = df_raw.dropna(how="all").dropDuplicates()
+df_clean = df_clean.withColumn("GRAVEDAD", upper(trim(col("GRAVEDAD")))) \
+                   .withColumn("MES", upper(trim(col("MES")))) \
+                   .withColumn("DIA", upper(trim(col("DIA"))))
+df_clean = df_clean.filter(col("GRAVEDAD").isNotNull() & col("ANIO").isNotNull())
+
+# 3. Análisis Exploratorio (EDA)
+print("\n---> A. Distribución de accidentes por Gravedad:")
+df_clean.groupBy("GRAVEDAD").agg(count("*").alias("TOTAL")).orderBy(desc("TOTAL")).show(truncate=False)
+
+print("\n---> B. Histórico de accidentes por Año:")
+df_clean.groupBy("ANIO").agg(count("*").alias("TOTAL")).orderBy("ANIO").show(truncate=False)
+
+print("\n---> C. Meses con mayor índice de accidentalidad:")
+df_clean.groupBy("MES").agg(count("*").alias("TOTAL")).orderBy(desc("TOTAL")).show(12, truncate=False)
+
+spark.stop()
